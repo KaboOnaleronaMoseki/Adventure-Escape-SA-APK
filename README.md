@@ -105,9 +105,12 @@ The migration command records applied migrations and runs each unapplied SQL fil
 Existing databases may safely be brought under migration tracking because the current schema
 migrations are idempotent.
 
-After the first successful Render deployment, set `EXPO_PUBLIC_BOOKING_API_URL` to the API Render
-HTTPS origin in both EAS `preview` and `production` environments, then create a new APK/build. Do
-not put database credentials or provider keys in EAS or the website.
+After deploying the Render API, add its HTTPS origin as the public
+`EXPO_PUBLIC_BOOKING_API_URL` variable in both EAS `preview` and `production` environments
+(`npx eas-cli env:set --name EXPO_PUBLIC_BOOKING_API_URL --value <API-HTTPS-origin> --environment preview --visibility plaintext`,
+then repeat with `--environment production`). The EAS build profiles select those environments.
+Create a new APK/build after setting the value. Do not put database credentials or provider keys in
+EAS or the website.
 
 Configure `BOOKING_NOTIFICATION_CRON_SECRET` as a server-side secret and schedule a POST request
 to `/booking-notifications` with an `Authorization: Bearer <secret>` header to retry queued email

@@ -31,6 +31,9 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
 
 # typescript
@@ -39,3 +42,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local booking storage
+.bookings-storage.json
+.accounts-storage.json

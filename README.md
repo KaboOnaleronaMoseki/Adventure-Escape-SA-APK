@@ -88,9 +88,10 @@ sessions use Expo SecureStore, while the website uses browser session storage. S
 are associated with the account, and the server uses the verified account name and email instead of
 trusting edited form values.
 
-Apply `database/migrations/003_create_client_accounts.sql` and
+Apply `database/migrations/003_create_client_accounts.sql`,
 `database/migrations/004_booking_quantities_and_pricing.sql` and
-`database/migrations/005_account_registration_email_outbox.sql` after the booking and email migrations. Set
+`database/migrations/005_account_registration_email_outbox.sql`, and
+`database/migrations/006_enable_row_level_security.sql` after the booking and email migrations. Set
 `ACCOUNT_VERIFICATION_URL` to the HTTPS website `account.html` URL and `ALLOWED_ORIGINS` to the
 comma-separated website origins when the website is hosted separately from the API. Resend and a
 verified sender must be configured for verification emails. New registrations are stored with a
@@ -101,7 +102,7 @@ registration notices remain queued and are retried by the protected `/booking-no
 Without PostgreSQL, the account
 migration, or email configuration, the relevant flow reports an error instead of claiming success.
 
-## Production deployment (Neon + Render)
+## Production deployment (Supabase + Render + Vercel)
 
 The root Render Blueprint in `render.yaml` runs the Expo Router production API and web build using
 the Node Express adapter (not the development server), applies ordered PostgreSQL migrations during
@@ -110,29 +111,34 @@ Render static-site Blueprint in its repository. The API uses Render's paid Start
 sleeping; the static website does not need a server instance. These configurations do not create
 external resources until deployed.
 
-Connect the root project repository to Render as a Blueprint and provide `DATABASE_URL`,
-`RESEND_API_KEY`, verified `RESEND_FROM_EMAIL`, and a random `BOOKING_NOTIFICATION_CRON_SECRET`
-in Render's private environment settings. Provision Neon PostgreSQL and use its pooled connection
-URL for `DATABASE_URL`.
+Create a Supabase project and set Render's private `DATABASE_URL` to the Supabase PostgreSQL
+Session Pooler connection string with SSL enabled. Keep the connection string server-side; neither
+the website nor Expo connects directly to the database. The API handles authentication, stores
+scrypt password hashes, and persists hashed session and verification tokens in Supabase Postgres.
+Migration 006 enables row-level security on application tables without client policies; the backend
+uses the database owner connection and remains the only data access path.
 
-Deploy the API service first. Then deploy the website static-site Blueprint from the separate
-website repository, setting its public `BOOKING_API_URL` to the API service's HTTPS origin. The
-website build inserts that origin into the booking and account API metadata. Finally, set
-`ALLOWED_ORIGINS` on the API service to the website's exact HTTPS origin and set
-`ACCOUNT_VERIFICATION_URL` to its `account.html` URL. Until those website values are configured,
-cross-origin website calls and email verification remain unavailable rather than succeeding
-against the wrong host.
+Connect the root project repository to Render as a Blueprint and provide `DATABASE_URL`,
+`RESEND_API_KEY`, verified `RESEND_FROM_EMAIL`, `ACCOUNT_NOTIFICATION_EMAIL`,
+`ACCOUNT_VERIFICATION_URL`, `ALLOWED_ORIGINS`, and a random `BOOKING_NOTIFICATION_CRON_SECRET`
+in Render's private environment settings. Render applies ordered migrations 001-006 before deploying
+the API.
+
+Deploy the API service first. In Vercel, set `BOOKING_API_URL` to the API service's HTTPS origin;
+`vercel.json` builds the static site and injects that origin into booking and account API metadata.
+Set Expo's `EXPO_PUBLIC_BOOKING_API_URL` to the same API origin. Both clients then use the same
+account and booking records in Supabase. Finally, set `ALLOWED_ORIGINS` on the API service to the
+website's exact HTTPS origin and set `ACCOUNT_VERIFICATION_URL` to its `account.html` URL. Until
+these values are configured, both clients fail closed rather than writing to different stores.
 
 The migration command records applied migrations and runs each unapplied SQL file transactionally.
 Existing databases may safely be brought under migration tracking because the current schema
 migrations are idempotent.
 
-After deploying the Render API, add its HTTPS origin as the public
-`EXPO_PUBLIC_BOOKING_API_URL` variable in the EAS `development`, `preview`, and `production` environments
-(`npx eas-cli env:set --name EXPO_PUBLIC_BOOKING_API_URL --value <API-HTTPS-origin> --environment preview --visibility plaintext`,
-then repeat with `--environment production`). The EAS build profiles select those environments.
-Create a new APK/build after setting the value. Do not put database credentials or provider keys in
-EAS or the website.
+After deploying the Render API, set its HTTPS origin as the public
+`EXPO_PUBLIC_BOOKING_API_URL` variable in each EAS `development`, `preview`, and `production`
+environment, then create a new APK/build. Do not put database credentials, Supabase service-role
+keys, or provider keys in EAS or the website.
 
 Configure `BOOKING_NOTIFICATION_CRON_SECRET` as a server-side secret and schedule a POST request
 to `/booking-notifications` with an `Authorization: Bearer <secret>` header to retry queued booking
@@ -141,8 +147,7 @@ them. Copy `.env.example` to a local environment file for the required server an
 configuration. Until the database is connected and migrations have been applied, valid booking
 requests receive HTTP 503; the API does not falsely report a saved booking.
 If the API returns `booking_storage_unavailable`, check the server logs and confirm that
-`DATABASE_URL` points to a reachable PostgreSQL database and migrations 001-004 completed,
-especially the email outbox and booking-quote migrations.
+`DATABASE_URL` points to a reachable Supabase PostgreSQL pooler and migrations 001-006 completed.
 
 Expo Router server output is enabled in `app.json` so the web build can serve the relative `/bookings`
 route.
@@ -172,6 +177,7 @@ Code locations:
 - `database/migrations/003_create_client_accounts.sql` — verified accounts, durable sessions, and account-linked bookings.
 - `database/migrations/004_booking_quantities_and_pricing.sql` — quantity storage and server-calculated quote data.
 - `database/migrations/005_account_registration_email_outbox.sql` — durable owner notifications for new registered accounts.
+- `database/migrations/006_enable_row_level_security.sql` — blocks direct Supabase client access to private application tables.
 - `app/bookings+api.ts` — server-side POST validation and pending booking creation.
 - `app/booking-notifications+api.ts` — authenticated retry endpoint for queued booking email.
 - `services/bookingEmail.ts` and `services/bookingEmailProvider.ts` — outbox dispatch and Resend delivery.

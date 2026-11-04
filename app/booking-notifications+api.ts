@@ -1,5 +1,7 @@
 import { dispatchPendingBookingEmails } from '@/services/bookingEmail';
 import { isBookingEmailConfigured } from '@/services/bookingEmailProvider';
+import { dispatchPendingAccountRegistrationEmails } from '@/services/accountRegistrationEmail';
+import { isAccountRegistrationEmailConfigured } from '@/services/accountEmail';
 
 export async function POST(request: Request) {
   const expectedSecret = process.env.BOOKING_NOTIFICATION_CRON_SECRET;
@@ -14,16 +16,23 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Unauthorized.' }, { status: 401 });
   }
 
-  if (!isBookingEmailConfigured()) {
+  if (!isBookingEmailConfigured() && !isAccountRegistrationEmailConfigured()) {
     return Response.json(
-      { error: 'Booking email delivery is not configured.' },
+      { error: 'Email delivery is not configured.' },
       { status: 503 },
     );
   }
 
   try {
-    const result = await dispatchPendingBookingEmails(50);
-    return Response.json(result);
+    const [bookings, accountRegistrations] = await Promise.all([
+      dispatchPendingBookingEmails(50),
+      dispatchPendingAccountRegistrationEmails(50),
+    ]);
+    return Response.json({
+      ...bookings,
+      sentAccountIds: accountRegistrations.sentAccountIds,
+      failedAccountRegistrationEmails: accountRegistrations.failed,
+    });
   } catch (error) {
     console.error('Unable to retry queued booking email notifications.', error);
     return Response.json(

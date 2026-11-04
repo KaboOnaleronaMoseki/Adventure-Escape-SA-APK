@@ -1,6 +1,14 @@
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
-import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -24,24 +32,32 @@ export default function WelcomeScreen() {
         imageStyle={styles.backgroundImage}
       >
         <View style={styles.shade}>
-          <View style={styles.content}>
-            <Image
-              source={require('../assets/site-images/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-              accessibilityLabel="Adventure Escape SA"
-            />
-            <Text style={styles.eyebrow}>Western Cape, South Africa</Text>
-            <Text style={styles.title}>Adventure begins{'\n'}where ordinary ends.</Text>
-            <Text style={styles.caption}>Your next great escape is waiting.</Text>
-            <Pressable
-              onPress={() => router.push('/home')}
-              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.buttonText}>Enter the adventure  →</Text>
-            </Pressable>
-          </View>
+          <ScrollView
+            style={styles.contentScroll}
+            contentContainerStyle={styles.contentScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.content}>
+              <Image
+                source={require('../assets/site-images/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityLabel="Adventure Escape SA"
+              />
+              <Text style={styles.eyebrow}>Western Cape, South Africa</Text>
+              <Text style={styles.title}>Adventure begins{'\n'}where ordinary ends.</Text>
+              <Text style={styles.caption}>Your next great escape is waiting.</Text>
+              <Pressable
+                onPress={() => router.push('/home')}
+                style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Enter the adventure"
+                accessibilityHint="Opens the Adventure Escape home screen"
+              >
+                <Text style={styles.buttonText}>Enter the adventure  →</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
           <Text style={styles.footer}>GUIDED OUTDOOR ADVENTURES  •  SINCE 2024</Text>
         </View>
       </ImageBackground>
@@ -55,10 +71,14 @@ const styles = StyleSheet.create({
   backgroundImage: { width: '100%', height: '100%' },
   shade: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     padding: spacing.lg,
     backgroundColor: 'rgba(36,29,30,0.57)',
+  },
+  contentScroll: { flex: 1, width: '100%' },
+  contentScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
   },
   content: { width: '100%', maxWidth: 680, alignItems: 'center' },
   logo: { width: 112, height: 112, marginBottom: spacing.md },
@@ -77,8 +97,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 51,
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowRadius: 20,
   },
   caption: {
     marginTop: spacing.lg,
@@ -88,6 +106,8 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: spacing.xl,
+    minHeight: 48,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: 15,
     borderRadius: 999,
@@ -102,8 +122,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   footer: {
-    position: 'absolute',
-    bottom: spacing.md,
+    paddingTop: spacing.md,
     color: 'rgba(255,255,255,0.75)',
     fontSize: 10,
     fontWeight: '700',

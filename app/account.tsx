@@ -223,7 +223,7 @@ export default function AccountScreen() {
             />
             {mode === 'register' ? (
               <Text style={styles.note}>
-                Your account is stored securely on our server. Verify your email before signing in.
+                Your name, email, and optional phone are stored securely and shared with our account team. Your password is hashed and never emailed. Verify your email before signing in.
               </Text>
             ) : null}
             {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : null}

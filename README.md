@@ -5,8 +5,10 @@ application, built with React Native and Expo Router.
 
 ## Run the app
 
+This project uses Expo SDK 58. Expo Go on a physical device must also support SDK 58.
+
 ```powershell
-cd path\to\adventure-escape-sa\expo-app
+cd path\to\Adventure-Escape-SA-APK
 npm install
 npm start
 ```
@@ -20,9 +22,23 @@ Choose how you want to run it:
   with the Expo Go app. Tunnel mode also works when the device and computer are on different
   networks.
 - **Web browser:** Run `npm run web` and open the local URL printed by Expo.
+- **Installed development build:** Run `npm run start:dev-client` after installing the EAS development APK.
 
 The app supports portrait and landscape orientation and tablet layouts. Emulator launch requires
 the relevant platform SDK/simulator to be installed; iOS Simulator is only available on macOS.
+
+## EAS development build
+
+The `development` EAS profile creates an internally distributed Android APK with the Expo
+development client. Sign in to EAS, then run:
+
+```powershell
+npx eas-cli@latest build --platform android --profile development
+```
+
+Install the generated APK on a device or emulator, then start the Metro server with
+`npm run start:dev-client` and connect from the development-client launcher. Set
+`EXPO_PUBLIC_BOOKING_API_URL` in the EAS `development` environment to enable online bookings.
 
 The native welcome screen is the app entry point. Tap **Enter the adventure** to open the home
 screen. Use the **Menu** button to open the grouped navigation for Home, About, Activities,
@@ -73,10 +89,16 @@ are associated with the account, and the server uses the verified account name a
 trusting edited form values.
 
 Apply `database/migrations/003_create_client_accounts.sql` and
-`database/migrations/004_booking_quantities_and_pricing.sql` after the booking and email migrations. Set
+`database/migrations/004_booking_quantities_and_pricing.sql` and
+`database/migrations/005_account_registration_email_outbox.sql` after the booking and email migrations. Set
 `ACCOUNT_VERIFICATION_URL` to the HTTPS website `account.html` URL and `ALLOWED_ORIGINS` to the
 comma-separated website origins when the website is hosted separately from the API. Resend and a
-verified sender must be configured for verification emails. Without PostgreSQL, the account
+verified sender must be configured for verification emails. New registrations are stored with a
+durable owner-notification record and emailed to `ACCOUNT_NOTIFICATION_EMAIL` (defaults to the
+booking notification address). Notifications include only the account ID, name, email, and optional
+phone; passwords, password hashes, verification links, and session tokens are never sent. Failed
+registration notices remain queued and are retried by the protected `/booking-notifications` endpoint.
+Without PostgreSQL, the account
 migration, or email configuration, the relevant flow reports an error instead of claiming success.
 
 ## Production deployment (Neon + Render)
@@ -106,15 +128,15 @@ Existing databases may safely be brought under migration tracking because the cu
 migrations are idempotent.
 
 After deploying the Render API, add its HTTPS origin as the public
-`EXPO_PUBLIC_BOOKING_API_URL` variable in both EAS `preview` and `production` environments
+`EXPO_PUBLIC_BOOKING_API_URL` variable in the EAS `development`, `preview`, and `production` environments
 (`npx eas-cli env:set --name EXPO_PUBLIC_BOOKING_API_URL --value <API-HTTPS-origin> --environment preview --visibility plaintext`,
 then repeat with `--environment production`). The EAS build profiles select those environments.
 Create a new APK/build after setting the value. Do not put database credentials or provider keys in
 EAS or the website.
 
 Configure `BOOKING_NOTIFICATION_CRON_SECRET` as a server-side secret and schedule a POST request
-to `/booking-notifications` with an `Authorization: Bearer <secret>` header to retry queued email
-notifications. Do not expose these secrets in the mobile app or use an `EXPO_PUBLIC_` prefix for
+to `/booking-notifications` with an `Authorization: Bearer <secret>` header to retry queued booking
+and account-registration notifications. Do not expose these secrets in the mobile app or use an `EXPO_PUBLIC_` prefix for
 them. Copy `.env.example` to a local environment file for the required server and mobile
 configuration. Until the database is connected and migrations have been applied, valid booking
 requests receive HTTP 503; the API does not falsely report a saved booking.
@@ -149,9 +171,11 @@ Code locations:
 - `database/migrations/002_booking_email_outbox.sql` — durable booking email queue.
 - `database/migrations/003_create_client_accounts.sql` — verified accounts, durable sessions, and account-linked bookings.
 - `database/migrations/004_booking_quantities_and_pricing.sql` — quantity storage and server-calculated quote data.
+- `database/migrations/005_account_registration_email_outbox.sql` — durable owner notifications for new registered accounts.
 - `app/bookings+api.ts` — server-side POST validation and pending booking creation.
 - `app/booking-notifications+api.ts` — authenticated retry endpoint for queued booking email.
 - `services/bookingEmail.ts` and `services/bookingEmailProvider.ts` — outbox dispatch and Resend delivery.
+- `services/accountRegistrationEmail.ts` and `services/accountEmail.ts` — durable registration notice delivery and account verification email.
 - `services/bookingEmail.test.ts` — notification recipient, payload, and error handling tests.
 - `services/bookingValidation.test.ts` — date, checkout, and 24-hour cutoff unit tests.
 - `services/bookingPricing.test.ts` — automatic activity-discount tier and total tests.

@@ -13,6 +13,13 @@ export interface StoredClientAccount extends ClientAccount {
   passwordHash: string;
 }
 
+export interface AccountRegistrationNotice {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+}
+
 export function publicClientAccount(account: StoredClientAccount): ClientAccount {
   return {
     id: account.id,
@@ -63,24 +70,102 @@ export const accountRepository = {
     verificationTokenHash: string;
     verificationExpiresAt: Date;
   }): Promise<StoredClientAccount> {
-    const result = await getDatabasePool().query<AccountRow>(
-      `INSERT INTO client_accounts (
-        id, full_name, email, email_normalized, phone, password_hash,
-        verification_token_hash, verification_expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING ${ACCOUNT_COLUMNS}`,
-      [
-        input.id,
-        input.fullName,
-        input.email,
-        input.normalizedEmail,
-        input.phone ?? null,
-        input.passwordHash,
-        input.verificationTokenHash,
-        input.verificationExpiresAt,
-      ],
+    const client = await getDatabasePool().connect();
+    let transactionStarted = false;
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+      const result = await client.query<AccountRow>(
+        `INSERT INTO client_accounts (
+          id, full_name, email, email_normalized, phone, password_hash,
+          verification_token_hash, verification_expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING ${ACCOUNT_COLUMNS}`,
+        [
+          input.id,
+          input.fullName,
+          input.email,
+          input.normalizedEmail,
+          input.phone ?? null,
+          input.passwordHash,
+          input.verificationTokenHash,
+          input.verificationExpiresAt,
+        ],
+      );
+      const account = toStoredAccount(result.rows[0]);
+      const notice: AccountRegistrationNotice = {
+        id: account.id,
+        fullName: account.fullName,
+        email: account.email,
+        ...(account.phone ? { phone: account.phone } : {}),
+      };
+      await client.query(
+        `INSERT INTO account_registration_email_outbox (account_id, payload)
+         VALUES ($1, $2::jsonb)`,
+        [account.id, JSON.stringify(notice)],
+      );
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return account;
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('Unable to roll back account registration transaction.', rollbackError);
+        }
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  async claimPendingRegistrationEmails(
+    limit: number,
+  ): Promise<{ accountId: string; payload: AccountRegistrationNotice }[]> {
+    const result = await getDatabasePool().query<{
+      accountId: string;
+      payload: AccountRegistrationNotice;
+    }>(
+      `WITH candidates AS (
+        SELECT account_id
+        FROM account_registration_email_outbox
+        WHERE status = 'pending'
+          OR (
+            status = 'sending'
+            AND (locked_at IS NULL OR locked_at < now() - interval '5 minutes')
+          )
+        ORDER BY created_at
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE account_registration_email_outbox AS outbox
+      SET status = 'sending', attempts = attempts + 1, locked_at = now()
+      FROM candidates
+      WHERE outbox.account_id = candidates.account_id
+      RETURNING outbox.account_id AS "accountId", outbox.payload`,
+      [Math.max(1, Math.min(Math.floor(limit), 50))],
     );
-    return toStoredAccount(result.rows[0]);
+    return result.rows;
+  },
+
+  async markRegistrationEmailSent(accountId: string): Promise<void> {
+    await getDatabasePool().query(
+      `UPDATE account_registration_email_outbox
+       SET status = 'sent', last_error = NULL, locked_at = NULL, sent_at = now()
+       WHERE account_id = $1`,
+      [accountId],
+    );
+  },
+
+  async markRegistrationEmailPending(accountId: string, reason: string): Promise<void> {
+    await getDatabasePool().query(
+      `UPDATE account_registration_email_outbox
+       SET status = 'pending', last_error = $2, locked_at = NULL
+       WHERE account_id = $1`,
+      [accountId, reason.slice(0, 1000)],
+    );
   },
 
   async findByEmail(email: string): Promise<StoredClientAccount | null> {

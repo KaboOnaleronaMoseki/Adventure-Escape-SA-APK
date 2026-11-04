@@ -16,5 +16,7 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         sync: false
+      - key: ACCOUNT_NOTIFICATION_EMAIL
+        sync: false
       - key: BOOKING_NOTIFICATION_CRON_SECRET
         sync: false

@@ -16,6 +16,7 @@ import {
   isAccountEmailConfigured,
   sendAccountVerificationEmail,
 } from '../services/accountEmail';
+import { dispatchPendingAccountRegistrationEmails } from '../services/accountRegistrationEmail';
 
 const VERIFICATION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -131,11 +132,20 @@ export async function POST(request: Request) {
     console.error('Client account created, but verification email could not be sent.', error);
   }
 
+  let registrationEmailSent = false;
+  try {
+    const notifications = await dispatchPendingAccountRegistrationEmails();
+    registrationEmailSent = notifications.sentAccountIds.includes(account.id);
+  } catch (error) {
+    console.error('Client account was saved, but its owner notification remains queued.', error);
+  }
+
   return apiJson(
     request,
     {
       account: publicClientAccount(account),
       verificationEmailSent,
+      registrationEmailStatus: registrationEmailSent ? 'sent' : 'queued',
       message: verificationEmailSent
         ? 'Account created. Check your email to verify it before signing in.'
         : 'Account created, but the verification email could not be sent. Check the email service configuration and request another verification email.',

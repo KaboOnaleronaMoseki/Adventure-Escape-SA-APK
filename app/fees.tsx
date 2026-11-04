@@ -149,12 +149,26 @@ export default function FeesScreen() {
       const selectedActIds = Object.keys(activityCounts).filter((id) => (activityCounts[id] ?? 0) > 0);
       const selectedAccomIds = Object.keys(accommodationCounts).filter((id) => (accommodationCounts[id] ?? 0) > 0);
 
+      function generateUUID(): string {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      }
+
+      const bookingUuid = generateUUID();
+      const bookingId = 'AE-' + bookingUuid.substring(0, 8).toUpperCase();
+
       const bookingRecord = {
+        id: bookingUuid,
         user_id: currentUser?.id ?? null,
         customer_name: fullName.trim(),
         email: email.trim(),
         phone: phone.trim(),
         notes: notes.trim(),
+        date: activityDate || checkInDate || new Date().toISOString().split('T')[0],
+        time: activityTime || '10:00',
         activity_ids: selectedActIds,
         activity_quantities: Object.fromEntries(
           selectedActIds.map((id) => [id, activityCounts[id]]),
@@ -172,21 +186,12 @@ export default function FeesScreen() {
         created_at: new Date().toISOString(),
       };
 
-      let bookingId = '';
-      const { data: inserted, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('bookings')
-        .insert([bookingRecord])
-        .select('id')
-        .single();
+        .insert([bookingRecord]);
 
-      if (!insertError && inserted?.id) {
-        bookingId = inserted.id;
-      } else if (insertError) {
+      if (insertError) {
         console.warn('Supabase booking error:', insertError.message);
-      }
-
-      if (!bookingId) {
-        bookingId = 'AE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       }
 
       // Send email notification via EmailJS

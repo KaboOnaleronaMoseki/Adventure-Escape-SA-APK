@@ -85,8 +85,8 @@ export default function AccountScreen() {
       try {
         if (!account?.email) throw new Error('Sign in again to view your bookings.');
         const filter = account.id
-          ? `user_id.eq.${account.id},email.eq.${account.email}`
-          : `email.eq.${account.email}`;
+          ? `user_id.eq.${account.id},email.ilike.${account.email}`
+          : `email.ilike.${account.email}`;
 
         const { data, error } = await supabase
           .from('bookings')

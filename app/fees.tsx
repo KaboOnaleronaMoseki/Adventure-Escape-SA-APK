@@ -206,6 +206,9 @@ export default function FeesScreen() {
 
         const emailParams = {
           to_email: NOTIFICATION_EMAIL,
+          email: NOTIFICATION_EMAIL,
+          recipient: NOTIFICATION_EMAIL,
+          to_name: 'Admin',
           customer_name: fullName.trim(),
           customer_email: email.trim(),
           customer_phone: phone.trim() || 'Not provided',
@@ -226,7 +229,10 @@ export default function FeesScreen() {
           EMAILJS_SERVICE_ID,
           EMAILJS_TEMPLATE_ID,
           emailParams,
-          { publicKey: EMAILJS_PUBLIC_KEY },
+          {
+            publicKey: EMAILJS_PUBLIC_KEY,
+            origin: 'https://adventureescapewebsite.vercel.app',
+          },
         );
         emailSent = true;
       } catch (emailErr) {

@@ -17,6 +17,7 @@ import {
 
 export interface BookingRepository {
   createIfAvailable(request: BookingRequest, customerAccountId?: string): Promise<Booking | null>;
+  listForCustomerAccount(customerAccountId: string): Promise<Booking[]>;
   recordDeclinedAttempt(reason: string): Promise<void>;
   claimPendingBookingEmails(
     limit: number,
@@ -127,6 +128,26 @@ const BOOKING_COLUMNS = `
 `;
 
 export const bookingRepository: BookingRepository = {
+  async listForCustomerAccount(customerAccountId) {
+    try {
+      const result = await getDatabasePool().query<BookingRow>(
+        `SELECT ${BOOKING_COLUMNS}
+         FROM bookings
+         WHERE customer_account_id = $1
+         ORDER BY COALESCE(
+           activity_start_at,
+           check_in_date::timestamp AT TIME ZONE 'Africa/Johannesburg',
+           created_at
+         ) DESC, created_at DESC`,
+        [customerAccountId],
+      );
+      return result.rows.map(bookingFromRow);
+    } catch (error) {
+      console.error('Database error while reading account booking history.', error);
+      throw error;
+    }
+  },
+
   async createIfAvailable(request, customerAccountId) {
     let client: PoolClient | undefined;
     let transactionStarted = false;

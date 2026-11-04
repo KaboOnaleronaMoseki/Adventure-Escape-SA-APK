@@ -10,6 +10,43 @@ import { dispatchPendingBookingEmails } from '../services/bookingEmail';
 
 const ALLOW_SAME_DAY_CHECKOUT = process.env.ALLOW_SAME_DAY_CHECKOUT === 'true';
 
+export async function GET(request: Request) {
+  const originError = apiOriginError(request);
+  if (originError) return originError;
+
+  const token = request.headers
+    .get('authorization')
+    ?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) {
+    return apiJson(request, { error: 'Sign in to access your bookings.' }, { status: 401 });
+  }
+
+  let accountProfile: Awaited<ReturnType<typeof accountRepository.findAccountForSession>>;
+  try {
+    accountProfile = await accountRepository.findAccountForSession(token);
+  } catch (error) {
+    console.error('Unable to verify booking history account session.', error);
+    return apiJson(request, { error: 'Account service is unavailable. Please try again shortly.' }, {
+      status: 503,
+    });
+  }
+  if (!accountProfile) {
+    return apiJson(request, { error: 'Your account session has expired. Sign in again.' }, {
+      status: 401,
+    });
+  }
+
+  try {
+    const bookings = await bookingRepository.listForCustomerAccount(accountProfile.id);
+    return apiJson(request, { bookings });
+  } catch (error) {
+    console.error('Unable to load account booking history.', error);
+    return apiJson(request, { error: 'Booking history is unavailable. Please try again shortly.' }, {
+      status: 503,
+    });
+  }
+}
+
 async function recordDeclinedAttempt(reason: string) {
   try {
     await bookingRepository.recordDeclinedAttempt(reason);

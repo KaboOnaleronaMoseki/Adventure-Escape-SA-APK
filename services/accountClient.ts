@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { ClientAccount } from './accountRepository';
+import type { Booking } from './bookingValidation';
 import {
   clearAccountSession,
   readAccountProfile,
@@ -13,6 +14,7 @@ export { clearAccountSession, readAccountProfile, readAccountSession, storeAccou
 
 export interface AccountApiResponse {
   account?: ClientAccount;
+  bookings?: Booking[];
   token?: string;
   verificationEmailSent?: boolean;
   message?: string;

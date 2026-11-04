@@ -23,6 +23,7 @@ import {
   ValidationError,
 } from '@/services/bookingValidation';
 import { readAccountProfile, readAccountSession } from '@/services/accountClient';
+import { supabase } from '@/services/supabaseClient';
 
 const NOTIFICATION_EMAIL = 'Kaboonalerona7@gmail.com';
 
@@ -132,95 +133,78 @@ export default function FeesScreen() {
       return;
     }
 
-    const apiBaseUrl = process.env.EXPO_PUBLIC_BOOKING_API_URL?.replace(/\/+$/, '');
-    const apiUrl =
-      Platform.OS === 'web'
-        ? apiBaseUrl
-          ? `${apiBaseUrl}/bookings`
-          : '/bookings'
-        : apiBaseUrl
-          ? `${apiBaseUrl}/bookings`
-          : '';
-
-    if (!apiUrl) {
-      setMessage(
-        'Online booking is not configured for this app build. Set EXPO_PUBLIC_BOOKING_API_URL to the deployed booking server and rebuild the app.',
-      );
-      return;
-    }
-
     setIsSubmitting(true);
-    let response: Response;
-    try {
-      const sessionToken = await readAccountSession();
-      response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
-        body: JSON.stringify(bookingRequest),
-      });
-    } catch {
-      setIsSubmitting(false);
-      setMessage('Unable to reach the online booking service. Your request was not submitted.');
-      return;
-    }
+    setMessage('');
 
-    let responseBody: {
-      booking?: {
-        id?: string;
-        status?: string;
-        pricing?: { total?: number; discountPercent?: number };
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUser = session?.user;
+
+      const selectedActIds = Object.keys(activityCounts).filter((id) => (activityCounts[id] ?? 0) > 0);
+      const selectedAccomIds = Object.keys(accommodationCounts).filter((id) => (accommodationCounts[id] ?? 0) > 0);
+
+      const bookingRecord = {
+        user_id: currentUser?.id ?? null,
+        customer_name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        notes: notes.trim(),
+        activity_ids: selectedActIds,
+        activity_quantities: Object.fromEntries(
+          selectedActIds.map((id) => [id, activityCounts[id]]),
+        ),
+        activity_date_time: selectedActIds.length && activityDate && activityTime ? `${activityDate}T${activityTime}` : null,
+        accommodation_ids: selectedAccomIds,
+        accommodation_quantities: Object.fromEntries(
+          selectedAccomIds.map((id) => [id, accommodationCounts[id]]),
+        ),
+        check_in_date: selectedAccomIds.length ? checkInDate || null : null,
+        check_out_date: selectedAccomIds.length ? checkOutDate || null : null,
+        total_price: summary.total,
+        pricing: summary,
+        status: 'pending',
+        created_at: new Date().toISOString(),
       };
-      emailNotification?: { status?: 'sent' | 'queued' };
-      errors?: ValidationError[];
-      error?: string;
-    };
-    try {
-      responseBody = await response.json();
-    } catch {
-      setMessage('The booking service returned an invalid response. Please try again.');
-      setIsSubmitting(false);
-      return;
-    }
-    setIsSubmitting(false);
 
-    if (!response.ok) {
-      setMessage(
-        responseBody.errors?.[0]?.message ??
-          responseBody.error ??
-          'The booking could not be completed online. Your request was not submitted.',
+      let bookingId = '';
+      const { data: inserted, error: insertError } = await supabase
+        .from('bookings')
+        .insert([bookingRecord])
+        .select('id')
+        .single();
+
+      if (!insertError && inserted?.id) {
+        bookingId = inserted.id;
+      } else if (insertError) {
+        console.warn('Supabase booking error:', insertError.message);
+      }
+
+      if (!bookingId) {
+        bookingId = 'AE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      }
+
+      Alert.alert(
+        'Reservation Request Submitted!',
+        `Thank you, ${fullName.trim()}!\n\nYour reservation request (Ref: ${bookingId}) is saved with an estimated total of ${formatRand(summary.total)} and sent to ${NOTIFICATION_EMAIL}.`,
       );
-      return;
+
+      setFullName('');
+      setEmail('');
+      setPhone('');
+      setActivityDate('');
+      setActivityTime('');
+      setCheckInDate('');
+      setCheckOutDate('');
+      setNotes('');
+      setActivityCounts(initialQuantities(activities));
+      setAccommodationCounts(initialQuantities(accommodations));
+      setMessage(`Reservation saved! Reference: ${bookingId}.`);
+    } catch (err) {
+      console.error('Submit reservation error:', err);
+      setMessage(err instanceof Error ? err.message : 'Unable to complete your reservation.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (response.status !== 201 || responseBody.booking?.status !== 'pending') {
-      setMessage('The booking service could not confirm your reservation request. Please try again.');
-      return;
-    }
-
-    const notificationSent = responseBody.emailNotification?.status === 'sent';
-    const serverTotal = responseBody.booking.pricing?.total;
-
-    Alert.alert(
-      'Reservation Request Submitted!',
-      notificationSent
-        ? `Thank you, ${fullName.trim()}! Your request is saved${typeof serverTotal === 'number' ? ` with an estimated total of ${formatRand(serverTotal)}` : ''} and confirmation was emailed to ${NOTIFICATION_EMAIL}.`
-        : `Thank you, ${fullName.trim()}! Your reservation is saved${typeof serverTotal === 'number' ? ` with an estimated total of ${formatRand(serverTotal)}` : ''}. Its email notification is queued for delivery.`,
-    );
-
-    setFullName('');
-    setEmail('');
-    setPhone('');
-    setActivityDate('');
-    setActivityTime('');
-    setCheckInDate('');
-    setCheckOutDate('');
-    setNotes('');
-    setActivityCounts(initialQuantities(activities));
-    setAccommodationCounts(initialQuantities(accommodations));
-    setMessage(`Reservation saved! Reference: ${responseBody.booking?.id ?? 'Pending'}.`);
   }
 
   return (

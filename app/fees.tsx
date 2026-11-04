@@ -24,8 +24,14 @@ import {
 } from '@/services/bookingValidation';
 import { readAccountProfile, readAccountSession } from '@/services/accountClient';
 import { supabase } from '@/services/supabaseClient';
+import emailjs from '@emailjs/react-native';
 
 const NOTIFICATION_EMAIL = 'Kaboonalerona7@gmail.com';
+
+// EmailJS configuration
+const EMAILJS_SERVICE_ID = 'service_uz05v8s';
+const EMAILJS_TEMPLATE_ID = 'template_0awhcvu';
+const EMAILJS_PUBLIC_KEY = 'wL4SZdb5JMNVwvwsU';
 
 function initialQuantities(items: { id: string }[]) {
   return items.reduce<Record<string, number>>((counts, item) => {
@@ -183,9 +189,51 @@ export default function FeesScreen() {
         bookingId = 'AE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       }
 
+      // Send email notification via EmailJS
+      let emailSent = false;
+      try {
+        const selectedActivityNames = activities
+          .filter((a) => (activityCounts[a.id] ?? 0) > 0)
+          .map((a) => a.name);
+        const selectedAccomNames = accommodations
+          .filter((a) => (accommodationCounts[a.id] ?? 0) > 0)
+          .map((a) => a.name);
+
+        const emailParams = {
+          to_email: NOTIFICATION_EMAIL,
+          customer_name: fullName.trim(),
+          customer_email: email.trim(),
+          customer_phone: phone.trim() || 'Not provided',
+          activities: selectedActivityNames.join(', ') || 'None',
+          activity_date: selectedActIds.length && activityDate && activityTime
+            ? `${activityDate} at ${activityTime}`
+            : 'N/A',
+          accommodation: selectedAccomNames.join(', ') || 'None',
+          accommodation_dates: selectedAccomIds.length && checkInDate && checkOutDate
+            ? `${checkInDate} to ${checkOutDate}`
+            : 'N/A',
+          notes: notes.trim() || 'None',
+          total_price: formatRand(summary.total),
+          booking_id: bookingId,
+        };
+
+        await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          emailParams,
+          { publicKey: EMAILJS_PUBLIC_KEY },
+        );
+        emailSent = true;
+      } catch (emailErr) {
+        console.warn('EmailJS sending error:', emailErr);
+      }
+
+      const emailNote = emailSent
+        ? '\n\nA confirmation email has been sent to ' + NOTIFICATION_EMAIL + '.'
+        : '\n\nBooking saved but email notification could not be sent.';
       Alert.alert(
         'Reservation Request Submitted!',
-        `Thank you, ${fullName.trim()}!\n\nYour reservation request (Ref: ${bookingId}) is saved with an estimated total of ${formatRand(summary.total)} and sent to ${NOTIFICATION_EMAIL}.`,
+        'Thank you, ' + fullName.trim() + '!\n\nYour reservation request (Ref: ' + bookingId + ') is saved with an estimated total of ' + formatRand(summary.total) + '.' + emailNote,
       );
 
       setFullName('');

@@ -6,6 +6,7 @@
     "node": ">=24.0.0 <25.0.0"
   },
   "dependencies": {
+    "@emailjs/react-native": "^5.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.119.0",
     "expo": "~58.0.23",
